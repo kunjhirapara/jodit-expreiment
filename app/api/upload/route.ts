@@ -20,7 +20,14 @@ export async function POST(request: NextRequest) {
         }
 
         // Generate a unique filename
-        const safeName = file.name;
+        const safeName = file.name
+          .toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9-\.]/g, "")
+          .replace(/-+/g, "-")
+          .replace(/^(.*)\.(png|webp|jpg|jpeg|gif)$/, (_, name, ext) => {
+            return name.replace(/\./g, "-") + "." + ext;
+          });
 
         // Ensure upload directory exists
         const uploadDir = path.join(
