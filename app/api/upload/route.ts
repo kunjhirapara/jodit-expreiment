@@ -3,12 +3,24 @@ import { promises as fs } from "fs";
 import path from "path";
 
 export async function POST(request: NextRequest) {
+  // Track written files so we can clean up on failure
+  const writtenFilePaths: string[] = [];
+
   try {
     const formData = await request.formData();
 
     // Jodit sends files under "files[0]", "files[1]", etc.
     const uploadedFiles: string[] = [];
     const isImages: boolean[] = [];
+
+    // Ensure upload directory exists
+    const uploadDir = path.join(
+      process.cwd(),
+      "public",
+      "images",
+      "editor-images",
+    );
+    await fs.mkdir(uploadDir, { recursive: true });
 
     for (const [key, value] of formData.entries()) {
       if (value instanceof File) {
@@ -29,20 +41,13 @@ export async function POST(request: NextRequest) {
             return name.replace(/\./g, "-") + "." + ext;
           });
 
-        // Ensure upload directory exists
-        const uploadDir = path.join(
-          process.cwd(),
-          "public",
-          "images",
-          "editor-images",
-        );
-        await fs.mkdir(uploadDir, { recursive: true });
-
         // Write file to disk
         const buffer = Buffer.from(await file.arrayBuffer());
         const filePath = path.join(uploadDir, safeName);
         await fs.writeFile(filePath, buffer);
 
+        // Track the written file for potential cleanup
+        writtenFilePaths.push(filePath);
         uploadedFiles.push(safeName);
         isImages.push(true);
       }
@@ -73,6 +78,17 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Upload error:", error);
+
+    // Clean up any files that were already written before the failure
+    for (const filePath of writtenFilePaths) {
+      try {
+        await fs.unlink(filePath);
+        console.log("Cleaned up partial upload:", filePath);
+      } catch {
+        // Ignore cleanup errors – file may not have been written yet
+      }
+    }
+
     return NextResponse.json(
       {
         success: false,
